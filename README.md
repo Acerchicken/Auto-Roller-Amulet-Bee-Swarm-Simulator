@@ -9,10 +9,9 @@ A custom Python automation tool for rolling Supreme Star Amulets (SSA). I origin
 [To roll single passives, simply select no passives or one passive on the target amulet.]
 
 ## How to Install & Use
-1.  Go to the **Releases** section on the right and download `AutoSsaRoller.exe`.
-3.  run `AutoSsaRoller.exe`.
+1.  Go to the **Releases** section on the right and download `AutoSsaRoller.zip`.
+3.  Right click and unzip `AutoSsaRoller.zip`, go into the extracted folder and run `AutoSsaRoller.exe`
 4.  If Windows prevents startup, click **More Info** -> **Run Anyway**.
-5
 
 
 ## Important: Virus & Safety Warning
