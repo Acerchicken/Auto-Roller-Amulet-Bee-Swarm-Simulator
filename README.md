@@ -1,4 +1,4 @@
-# SSA Auto Roller [[Check Releases to Install](https://github.com/spctrl1/SSA-Auto-Roller/releases/latest)]
+# SSA Auto Roller [[Installation and Setup Guide](https://youtu.be/9KQ_FDrD0ZM?si=xmrSAn5ffLpbkOA7)]
 
 [![Download](https://img.shields.io/github/v/release/spctrl1/SSA-Auto-Roller?label=Download&style=for-the-badge)](https://github.com/spctrl1/SSA-Auto-Roller/releases/latest)
 
