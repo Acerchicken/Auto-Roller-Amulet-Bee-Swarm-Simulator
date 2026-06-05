@@ -79,8 +79,7 @@ The macro now features an automated logging system to track your progress:
 If you've modified the code or want to compile the tool into a standalone executable (`.exe`) file to share:
 
 1. **Prerequisites:** Make sure you have installed Python and the dependencies (`pip install -r requirements.txt`).
-2. **Run the Build Script:** Simply double-click the `build.bat` file in the project folder.
-   - Alternatively, open Command Prompt and type: `build.bat`
+2. **Run the Build Script:** Simply run code in `build.txt` file in the project folder.
 3. **Get the Output:** 
    - Wait for the compilation to finish (it might take a minute).
    - Go to the newly created `dist/AutoSsaRoller/` folder. You will find `AutoSsaRoller.exe` inside.
