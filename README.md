@@ -74,6 +74,18 @@ The macro now features an automated logging system to track your progress:
 * **Start (F1):** Begin auto-rolling. Includes a success popup when a target is found.
 * **Stop (F2):** Stop the macro immediately.
 
+## 5. How to Build Your Own `.exe`
+
+If you've modified the code or want to compile the tool into a standalone executable (`.exe`) file to share:
+
+1. **Prerequisites:** Make sure you have installed Python and the dependencies (`pip install -r requirements.txt`).
+2. **Run the Build Script:** Simply double-click the `build.bat` file in the project folder.
+   - Alternatively, open Command Prompt and type: `build.bat`
+3. **Get the Output:** 
+   - Wait for the compilation to finish (it might take a minute).
+   - Go to the newly created `dist/AutoSsaRoller/` folder. You will find `AutoSsaRoller.exe` inside.
+   - *Note:* The build script uses `--onedir` to keep startup times fast. You must distribute the entire `AutoSsaRoller` folder (not just the `.exe`) if you want to share it with others.
+
 ---
 
 <img width="592" height="931" alt="image" src="https://github.com/user-attachments/assets/273f7d89-2092-4887-bd5d-9c0b8815da32" />

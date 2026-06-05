@@ -1,0 +1,11 @@
+@echo off
+echo Installing PyInstaller if not present...
+pip install pyinstaller
+
+echo.
+echo Building SSA Auto Roller into an executable...
+pyinstaller --noconfirm --onedir --windowed --icon "logo.ico" --add-data "logo.ico;." --collect-all rapidocr_onnxruntime "AutoSsaRoller.py"
+
+echo.
+echo Build complete! Your files are in the "dist\AutoSsaRoller" folder.
+pause
