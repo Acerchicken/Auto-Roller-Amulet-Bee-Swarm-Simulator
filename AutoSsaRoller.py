@@ -107,13 +107,16 @@ def ocr_process(img):
         box, text = item[0], item[1]
         y_center = sum(pt[1] for pt in box) / 4
         x_center = sum(pt[0] for pt in box) / 4
-        items.append({"y": y_center, "x": x_center, "text": text})
+        h = max(pt[1] for pt in box) - min(pt[1] for pt in box)
+        if h <= 0: h = 10
+        items.append({"y": y_center, "x": x_center, "h": h, "text": text})
     items.sort(key=lambda item: item["y"])
     lines = []
     if items:
         current_line = [items[0]]
         for i in range(1, len(items)):
-            if abs(items[i]["y"] - current_line[0]["y"]) < 20: 
+            threshold = max(current_line[0]["h"], items[i]["h"]) * 0.6
+            if abs(items[i]["y"] - current_line[0]["y"]) < threshold: 
                 current_line.append(items[i])
             else:
                 current_line.sort(key=lambda item: item["x"])
@@ -179,6 +182,12 @@ def run_debug_test(log_main, log_raw, get_scan_rect):
     rect = get_scan_rect()
     img = get_stats_image_dynamic(rect)
     if img is not None:
+        try:
+            bgr_img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
+            cv2.imwrite("debug_ocr_captured.jpg", bgr_img)
+            log_main("Saved capture to debug_ocr_captured.jpg")
+        except Exception:
+            pass
         raw_text = ocr_process(img)
         log_raw(f"--- RAW READ ---\n{raw_text}\n----------------", clear=True)
         p, s = parse_stats(raw_text)
@@ -466,7 +475,7 @@ class MacroGUI:
 
         self.header_label = tk.Label(self.main_window, text="SSA Auto Roller (Multi-Target)", font=("Segoe UI", 12, "bold"))
         self.header_label.pack(pady=2)
-        tk.Label(self.main_window, text="Made by spectral (discord - spctrl, Roblox - 45LEGEND_X)", font=("Segoe UI", 8)).pack(pady=0)
+        tk.Label(self.main_window, text="Made by spectral (discord - spctrl, Roblox - 45LEGEND_X), improved by Acerchicken", font=("Segoe UI", 8)).pack(pady=0)
         c_frame = tk.Frame(self.main_window)
         c_frame.pack(pady=0)
         tk.Label(c_frame, text="F1: Start | F2: Stop", fg="blue", font=("Segoe UI", 9, "bold")).pack(side="left", padx=5)
@@ -475,7 +484,6 @@ class MacroGUI:
         tk.Checkbutton(o_frame, text="Always on Top", variable=self.always_on_top, command=self.toggle_top).pack(side="left", padx=2)
         tk.Checkbutton(o_frame, text="Debug Logs", variable=self.debug_mode).pack(side="left", padx=2)
         tk.Button(o_frame, text="Test OCR (F3)", command=self.start_test_thread, bg="#e1e1e1", width=10, height=1, font=("Arial", 8)).pack(side="left", padx=5)
-        tk.Button(o_frame, text="Join Discord", command=self.open_discord, bg="#5865F2", fg="white", font=("Arial", 8, "bold")).pack(side="left", padx=5)
         self.create_stats_section(self.main_window)
         region_controls = tk.Frame(self.main_window)
         region_controls.pack(fill="x", padx=5, pady=2)
