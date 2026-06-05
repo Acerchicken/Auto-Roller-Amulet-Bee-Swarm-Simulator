@@ -80,12 +80,12 @@ def get_screen_point(ratio_tuple):
 def wiggle_click(ratio_coords):
     x, y = get_screen_point(ratio_coords)
     pyautogui.moveTo(x, y)
-    time.sleep(0.05)
+    time.sleep(0.05) # CUSTOMIZE: Time to wait for Roblox to register cursor movement (seconds)
     pydirectinput.moveRel(1, 0)
     pydirectinput.moveRel(-1, 0)
-    time.sleep(0.05)
+    time.sleep(0.05) # CUSTOMIZE: Time to wait before sending the actual click
     pydirectinput.mouseDown()
-    time.sleep(0.05) 
+    time.sleep(0.05) # CUSTOMIZE: Time to hold the mouse button down (do not set too low)
     pydirectinput.mouseUp()
 
 def get_stats_image_dynamic(scan_rect):
@@ -94,6 +94,8 @@ def get_stats_image_dynamic(scan_rect):
 
 def ocr_process(img):
     if img is None: return ""
+    # CUSTOMIZE: Image magnification before AI processing (fx=2, fy=2 means 2x size). 
+    # If in-game text is too small or blurry, try changing 2 to 3.
     img = cv2.resize(img, None, fx=2, fy=2, interpolation=cv2.INTER_CUBIC)
     img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     try:
@@ -115,6 +117,8 @@ def ocr_process(img):
     if items:
         current_line = [items[0]]
         for i in range(1, len(items)):
+            # CUSTOMIZE: Threshold to merge text on the same horizontal line. 0.6 = 60% of text height.
+            # If the OCR splits a single line into two, try increasing this (e.g., 0.7 or 0.8).
             threshold = max(current_line[0]["h"], items[i]["h"]) * 0.6
             if abs(items[i]["y"] - current_line[0]["y"]) < threshold: 
                 current_line.append(items[i])
@@ -418,7 +422,7 @@ class MacroGUI:
             icon_path = resource_path("logo.ico")
             self.root.iconbitmap(icon_path) 
         except Exception: pass
-        self.root.geometry("640x900")
+        self.root.geometry("640x900") # CUSTOMIZE: Default window size on startup (Width x Height)
         self.config_file = "ssa_settings.json"
         self.overlay_window = None
         self.btn_overlays = {'yes': None, 'no': None}
@@ -489,12 +493,26 @@ class MacroGUI:
         region_controls.pack(fill="x", padx=5, pady=2)
         tk.Label(region_controls, text="Target Amulets", font=("Segoe UI", 9, "bold")).pack(side="left")
         tk.Button(region_controls, text="+ Add Amulet", command=self.add_amulet, bg="#ccffcc", font=("Arial", 8)).pack(side="right")
-        self.amulets_frame = tk.Frame(self.main_window, bd=1, relief="sunken")
-        self.amulets_frame.pack(fill="both", expand=True, padx=5, pady=2)
+        self.amulets_container = tk.Frame(self.main_window, bd=1, relief="sunken")
+        self.amulets_container.pack(fill="x", padx=5, pady=2)
+        
+        # CUSTOMIZE: Maximum height of the Amulet list container. 
+        # For example, 220 is enough for about 2 amulets. Increase this if you want to see 3-4 amulets at once without scrolling.
+        self.amulets_canvas = tk.Canvas(self.amulets_container, height=400)
+        self.amulets_scrollbar = ttk.Scrollbar(self.amulets_container, orient="vertical", command=self.amulets_canvas.yview)
+        self.amulets_frame = tk.Frame(self.amulets_canvas)
+        
+        self.amulets_frame.bind("<Configure>", lambda e: self.amulets_canvas.configure(scrollregion=self.amulets_canvas.bbox("all")))
+        self.amulets_canvas_window = self.amulets_canvas.create_window((0, 0), window=self.amulets_frame, anchor="nw")
+        self.amulets_canvas.bind("<Configure>", lambda e: self.amulets_canvas.itemconfig(self.amulets_canvas_window, width=e.width))
+        self.amulets_canvas.configure(yscrollcommand=self.amulets_scrollbar.set)
+        
+        self.amulets_canvas.pack(side="left", fill="both", expand=True)
+        self.amulets_scrollbar.pack(side="right", fill="y")
         self.create_config_section(self.main_window)
         self.log_pane = tk.PanedWindow(self.main_window, orient=tk.HORIZONTAL, sashrelief=tk.RAISED)
         self.log_pane.pack(padx=2, pady=2, fill="both", expand=True)
-        self.log_pane.config(height=150)
+        self.log_pane.config(height=150) # CUSTOMIZE: Height of the Log section at the bottom of the tool
         self.main_frame = tk.Frame(self.log_pane)
         tk.Label(self.main_frame, text="Detected Stats", font=("Arial", 8, "bold")).pack(anchor="w")
         self.log_main_txt = tk.Text(self.main_frame, height=5, width=1, state='disabled', font=("Consolas", 8))
@@ -528,7 +546,14 @@ class MacroGUI:
         webbrowser.open("https://discord.gg/5pfySdjecR")
 
     def _on_mousewheel(self, event):
-        self.main_canvas.yview_scroll(int(-1*(event.delta/120)), "units")
+        try:
+            widget = self.root.winfo_containing(event.x_root, event.y_root)
+            if widget and str(widget).startswith(str(self.amulets_canvas)):
+                self.amulets_canvas.yview_scroll(int(-1*(event.delta/120)), "units")
+            else:
+                self.main_canvas.yview_scroll(int(-1*(event.delta/120)), "units")
+        except Exception:
+            self.main_canvas.yview_scroll(int(-1*(event.delta/120)), "units")
     def add_amulet(self):
         idx = len(self.amulets)
         rf = AmuletFrame(self.amulets_frame, idx, self.remove_amulet, self.calculate_odds, self)
