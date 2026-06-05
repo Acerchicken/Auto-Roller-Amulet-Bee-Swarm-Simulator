@@ -20,7 +20,7 @@ pydirectinput.PAUSE = 0.001
 pydirectinput.FAILSAFE = False
 pyautogui.FAILSAFE = False
 logging.getLogger("ppocr").setLevel(logging.ERROR)
-ocr_model = RapidOCR(det_use_gpu=True, cls_use_gpu=True, rec_use_gpu=True)
+ocr_model = RapidOCR()
 
 def resource_path(relative_path):
     try:
@@ -51,22 +51,39 @@ ALL_PASSIVES = [
 ]
 running = False
 
+# Display Override Settings
+USE_CUSTOM_RES = False
+CUSTOM_RES_W = 1920
+CUSTOM_RES_H = 1080
+CUSTOM_SCALE = 1.0
+
 def get_screen_rect(ratio_tuple):
-    sw, sh = pyautogui.size()
+    global USE_CUSTOM_RES, CUSTOM_RES_W, CUSTOM_RES_H, CUSTOM_SCALE
+    if USE_CUSTOM_RES and CUSTOM_SCALE > 0:
+        sw = CUSTOM_RES_W / CUSTOM_SCALE
+        sh = CUSTOM_RES_H / CUSTOM_SCALE
+    else:
+        sw, sh = pyautogui.size()
     rx, ry, rw, rh = ratio_tuple
     return (int(sw * rx), int(sh * ry), int(sw * rw), int(sh * rh))
 
 def get_screen_point(ratio_tuple):
-    sw, sh = pyautogui.size()
+    global USE_CUSTOM_RES, CUSTOM_RES_W, CUSTOM_RES_H, CUSTOM_SCALE
+    if USE_CUSTOM_RES and CUSTOM_SCALE > 0:
+        sw = CUSTOM_RES_W / CUSTOM_SCALE
+        sh = CUSTOM_RES_H / CUSTOM_SCALE
+    else:
+        sw, sh = pyautogui.size()
     rx, ry = ratio_tuple
     return (int(sw * rx), int(sh * ry))
 
 def wiggle_click(ratio_coords):
     x, y = get_screen_point(ratio_coords)
-    pydirectinput.moveTo(x, y)
+    pyautogui.moveTo(x, y)
     time.sleep(0.05)
     pydirectinput.moveRel(1, 0)
     pydirectinput.moveRel(-1, 0)
+    time.sleep(0.05)
     pydirectinput.mouseDown()
     time.sleep(0.05) 
     pydirectinput.mouseUp()
@@ -83,12 +100,28 @@ def ocr_process(img):
         result, _ = ocr_model(img) 
     except Exception:
         return ""
-    full_text = ""
-    if result:
-        for item in result:
-            if len(item) >= 2:
-                full_text += item[1] + "\n"
-    return full_text
+    if not result: return ""
+    items = []
+    for item in result:
+        if len(item) < 2: continue
+        box, text = item[0], item[1]
+        y_center = sum(pt[1] for pt in box) / 4
+        x_center = sum(pt[0] for pt in box) / 4
+        items.append({"y": y_center, "x": x_center, "text": text})
+    items.sort(key=lambda item: item["y"])
+    lines = []
+    if items:
+        current_line = [items[0]]
+        for i in range(1, len(items)):
+            if abs(items[i]["y"] - current_line[0]["y"]) < 20: 
+                current_line.append(items[i])
+            else:
+                current_line.sort(key=lambda item: item["x"])
+                lines.append(" ".join(item["text"] for item in current_line))
+                current_line = [items[i]]
+        current_line.sort(key=lambda item: item["x"])
+        lines.append(" ".join(item["text"] for item in current_line))
+    return "\n".join(lines)
 
 def parse_stats(text):
     passives = []
@@ -106,14 +139,12 @@ def parse_stats(text):
         for clean_p, real_p in passive_map.items():
             if clean_p in line_clean:
                 passives.append(real_p)
-        match = re.search(r'[x\+]?\s*(\d+[\.,]?\d*)(.*)', line, re.IGNORECASE)
+        match = re.search(r'[x\+]?\s*(\d+[\.,]?\d*)', line, re.IGNORECASE)
         if match:
             val_str = match.group(1).replace(',', '.')
-            rest_of_line = match.group(2)
-            clean_rest = rest_of_line.lower().replace(" ", "").replace("%", "")
             found_stat_name = None
             for k in sorted_stat_keys:
-                if k in clean_rest:
+                if k in line_clean:
                     found_stat_name = stat_map[k]
                     break
             if found_stat_name:
@@ -410,37 +441,52 @@ class MacroGUI:
         self.current_session_spent = 0
         self.loaded_all_time_runs = 0
         self.loaded_all_time_spent = 0
-        self.header_label = tk.Label(root, text="SSA Auto Roller (Multi-Target)", font=("Segoe UI", 12, "bold"))
+        
+        self.use_custom_res = tk.BooleanVar(value=False)
+        self.var_res_w = tk.IntVar(value=1920)
+        self.var_res_h = tk.IntVar(value=1080)
+        self.var_scale = tk.DoubleVar(value=1.0)
+        
+        self.use_custom_res.trace_add("write", self.update_globals)
+        self.var_res_w.trace_add("write", self.update_globals)
+        self.var_res_h.trace_add("write", self.update_globals)
+        self.var_scale.trace_add("write", self.update_globals)
+        self.update_globals()
+        
+        self.main_canvas = tk.Canvas(root)
+        self.main_scrollbar = ttk.Scrollbar(root, orient="vertical", command=self.main_canvas.yview)
+        self.main_window = tk.Frame(self.main_canvas)
+        self.main_window.bind("<Configure>", lambda e: self.main_canvas.configure(scrollregion=self.main_canvas.bbox("all")))
+        self.main_window_id = self.main_canvas.create_window((0, 0), window=self.main_window, anchor="nw")
+        self.main_canvas.bind("<Configure>", lambda e: self.main_canvas.itemconfig(self.main_window_id, width=e.width))
+        self.main_canvas.configure(yscrollcommand=self.main_scrollbar.set)
+        self.main_canvas.pack(side="left", fill="both", expand=True)
+        self.main_scrollbar.pack(side="right", fill="y")
+        self.main_canvas.bind_all("<MouseWheel>", self._on_mousewheel)
+
+        self.header_label = tk.Label(self.main_window, text="SSA Auto Roller (Multi-Target)", font=("Segoe UI", 12, "bold"))
         self.header_label.pack(pady=2)
-        tk.Label(root, text="Made by spectral (discord - spctrl, Roblox - 45LEGEND_X)", font=("Segoe UI", 8)).pack(pady=0)
-        c_frame = tk.Frame(root)
+        tk.Label(self.main_window, text="Made by spectral (discord - spctrl, Roblox - 45LEGEND_X)", font=("Segoe UI", 8)).pack(pady=0)
+        c_frame = tk.Frame(self.main_window)
         c_frame.pack(pady=0)
         tk.Label(c_frame, text="F1: Start | F2: Stop", fg="blue", font=("Segoe UI", 9, "bold")).pack(side="left", padx=5)
-        o_frame = tk.Frame(root)
+        o_frame = tk.Frame(self.main_window)
         o_frame.pack(pady=0)
         tk.Checkbutton(o_frame, text="Always on Top", variable=self.always_on_top, command=self.toggle_top).pack(side="left", padx=2)
         tk.Checkbutton(o_frame, text="Debug Logs", variable=self.debug_mode).pack(side="left", padx=2)
         tk.Button(o_frame, text="Test OCR (F3)", command=self.start_test_thread, bg="#e1e1e1", width=10, height=1, font=("Arial", 8)).pack(side="left", padx=5)
         tk.Button(o_frame, text="Join Discord", command=self.open_discord, bg="#5865F2", fg="white", font=("Arial", 8, "bold")).pack(side="left", padx=5)
-        self.create_stats_section(root)
-        region_controls = tk.Frame(root)
+        self.create_stats_section(self.main_window)
+        region_controls = tk.Frame(self.main_window)
         region_controls.pack(fill="x", padx=5, pady=2)
         tk.Label(region_controls, text="Target Amulets", font=("Segoe UI", 9, "bold")).pack(side="left")
         tk.Button(region_controls, text="+ Add Amulet", command=self.add_amulet, bg="#ccffcc", font=("Arial", 8)).pack(side="right")
-        self.canvas_container = tk.Frame(root, bd=1, relief="sunken")
-        self.canvas_container.pack(fill="both", expand=True, padx=5, pady=2)
-        self.canvas = tk.Canvas(self.canvas_container)
-        self.scrollbar = ttk.Scrollbar(self.canvas_container, orient="vertical", command=self.canvas.yview)
-        self.scrollable_frame = tk.Frame(self.canvas)
-        self.scrollable_frame.bind("<Configure>", lambda e: self.canvas.configure(scrollregion=self.canvas.bbox("all")))
-        self.canvas.create_window((0, 0), window=self.scrollable_frame, anchor="nw")
-        self.canvas.configure(yscrollcommand=self.scrollbar.set)
-        self.canvas.pack(side="left", fill="both", expand=True)
-        self.scrollbar.pack(side="right", fill="y")
-        self.canvas.bind_all("<MouseWheel>", self._on_mousewheel)
-        self.create_config_section(root)
-        self.log_pane = tk.PanedWindow(root, orient=tk.HORIZONTAL, sashrelief=tk.RAISED)
+        self.amulets_frame = tk.Frame(self.main_window, bd=1, relief="sunken")
+        self.amulets_frame.pack(fill="both", expand=True, padx=5, pady=2)
+        self.create_config_section(self.main_window)
+        self.log_pane = tk.PanedWindow(self.main_window, orient=tk.HORIZONTAL, sashrelief=tk.RAISED)
         self.log_pane.pack(padx=2, pady=2, fill="both", expand=True)
+        self.log_pane.config(height=150)
         self.main_frame = tk.Frame(self.log_pane)
         tk.Label(self.main_frame, text="Detected Stats", font=("Arial", 8, "bold")).pack(anchor="w")
         self.log_main_txt = tk.Text(self.main_frame, height=5, width=1, state='disabled', font=("Consolas", 8))
@@ -460,14 +506,24 @@ class MacroGUI:
         self.root.protocol("WM_DELETE_WINDOW", self.on_close)
         self.toggle_top()
 
+    def update_globals(self, *args):
+        global USE_CUSTOM_RES, CUSTOM_RES_W, CUSTOM_RES_H, CUSTOM_SCALE
+        USE_CUSTOM_RES = self.use_custom_res.get()
+        try:
+            CUSTOM_RES_W = self.var_res_w.get()
+            CUSTOM_RES_H = self.var_res_h.get()
+            CUSTOM_SCALE = self.var_scale.get()
+        except Exception:
+            pass
+
     def open_discord(self):
         webbrowser.open("https://discord.gg/5pfySdjecR")
 
     def _on_mousewheel(self, event):
-        self.canvas.yview_scroll(int(-1*(event.delta/120)), "units")
+        self.main_canvas.yview_scroll(int(-1*(event.delta/120)), "units")
     def add_amulet(self):
         idx = len(self.amulets)
-        rf = AmuletFrame(self.scrollable_frame, idx, self.remove_amulet, self.calculate_odds, self)
+        rf = AmuletFrame(self.amulets_frame, idx, self.remove_amulet, self.calculate_odds, self)
         rf.pack(fill="x", pady=2, padx=2)
         self.amulets.append(rf)
         self.calculate_odds()
@@ -504,13 +560,11 @@ class MacroGUI:
             self.update_overlay()
     def update_btn_overlay(self, *args):
         if not any(self.btn_overlays.values()): return
-        sw, sh = pyautogui.size()
         coords = self.get_btn_coords()
         for key in ['yes', 'no']:
             win = self.btn_overlays.get(key)
             if win:
-                rx, ry = coords[key]
-                px, py = int(sw * rx), int(sh * ry)
+                px, py = get_screen_point(coords[key])
                 win.geometry(f"20x20+{px-10}+{py-10}")
                 win.update_idletasks()
     def toggle_btn_overlay(self):
@@ -584,6 +638,17 @@ class MacroGUI:
                 btn_toggle.config(text="[-]")
         btn_toggle = tk.Button(header_frame, text="[+]", font=("Consolas", 7), command=toggle_config, borderwidth=1, width=3)
         btn_toggle.pack(side="right", padx=2, pady=1)
+        
+        grp_res = tk.LabelFrame(content_frame, text="Display Settings (Fix F1 click bug)", padx=2, pady=2)
+        grp_res.pack(fill="x", pady=2)
+        tk.Checkbutton(grp_res, text="Use Custom", variable=self.use_custom_res).pack(side="left", padx=2)
+        tk.Label(grp_res, text="W:").pack(side="left")
+        tk.Entry(grp_res, textvariable=self.var_res_w, width=5).pack(side="left", padx=2)
+        tk.Label(grp_res, text="H:").pack(side="left")
+        tk.Entry(grp_res, textvariable=self.var_res_h, width=5).pack(side="left", padx=2)
+        tk.Label(grp_res, text="Scale:").pack(side="left")
+        tk.Entry(grp_res, textvariable=self.var_scale, width=4).pack(side="left", padx=2)
+        
         grp_delay = tk.LabelFrame(content_frame, text="Timing Delays (Seconds)", padx=2, pady=2)
         grp_delay.pack(fill="x", pady=2)
         tk.Label(grp_delay, text="Click Delay:").pack(side="left", padx=5)
@@ -753,6 +818,10 @@ class MacroGUI:
         config_data = {
             "always_on_top": self.always_on_top.get(),
             "debug_mode": self.debug_mode.get(),
+            "use_custom_res": self.use_custom_res.get(),
+            "res_w": self.var_res_w.get(),
+            "res_h": self.var_res_h.get(),
+            "scale": self.var_scale.get(),
             "honey_amount": self.honey_var.get(),
             "max_honey": self.max_honey_var.get(),
             "total_runs": new_total_runs,
@@ -775,6 +844,11 @@ class MacroGUI:
             with open(self.config_file, 'r') as f: data = json.load(f)
             self.always_on_top.set(data.get("always_on_top", True))
             self.debug_mode.set(data.get("debug_mode", False))
+            self.use_custom_res.set(data.get("use_custom_res", False))
+            self.var_res_w.set(data.get("res_w", 1920))
+            self.var_res_h.set(data.get("res_h", 1080))
+            self.var_scale.set(data.get("scale", 1.0))
+            self.update_globals()
             self.honey_var.set(data.get("honey_amount", "0"))
             self.max_honey_var.set(data.get("max_honey", "0"))
             self.loaded_all_time_runs = data.get("total_runs", 0)
